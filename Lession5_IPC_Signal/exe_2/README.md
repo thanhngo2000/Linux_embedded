@@ -1,0 +1,1 @@
+Nếu không gọi lại hàm alarm(1) trong xử lý thì bộ đếm sẽ không được khởi đọng lại và chương trình sẽ bị dừng trong vòng lặp while để chờ một signal

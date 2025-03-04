@@ -1,0 +1,1 @@
+nếu bỏ qua tín hiệu SIGINT thì khi nhắn ctrl C, chương trình sẽ dừng ngay lập tức
