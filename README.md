@@ -6,6 +6,7 @@ Learn Linux Embedded
 - [Lesson 4L Thread](https://github.com/thanhngo2000/Linux_embedded/tree/main/Lession4_Thread)
 - [Lesson 5: IPC Signal](https://github.com/thanhngo2000/Linux_embedded/tree/main/Lession5_IPC_Signal)
 - [Lesson 6: Chat Application](https://github.com/thanhngo2000/Linux_embedded/tree/main/Lession6_Chat_Application)
+- [Lesson 6: Socket](https://github.com/thanhngo2000/Linux_embedded/tree/main/Lession6_Socket)
 - [Lesson 7: IPC Pipe](https://github.com/thanhngo2000/Linux_embedded/tree/main/Lession7_IPC_Pipe)
 - [Lesson 8: IPC Message Queues](https://github.com/thanhngo2000/Linux_embedded/tree/main/Lession8_IPC_MessageQueues)
 - [Note Lesson](https://github.com/thanhngo2000/Linux_embedded/tree/main/Note_Lession)
