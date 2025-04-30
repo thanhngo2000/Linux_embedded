@@ -9,4 +9,5 @@ Learn Linux Embedded
 - [Lesson 6: Socket](https://github.com/thanhngo2000/Linux_embedded/tree/main/Lession6_Socket)
 - [Lesson 7: IPC Pipe](https://github.com/thanhngo2000/Linux_embedded/tree/main/Lession7_IPC_Pipe)
 - [Lesson 8: IPC Message Queues](https://github.com/thanhngo2000/Linux_embedded/tree/main/Lession8_IPC_MessageQueues)
+- [Sensor Gateway Project](https://github.com/thanhngo2000/Linux_embedded/tree/main/Final_Project)
 - [Note Lesson](https://github.com/thanhngo2000/Linux_embedded/tree/main/Note_Lession)
