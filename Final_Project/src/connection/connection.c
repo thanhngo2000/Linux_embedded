@@ -6,12 +6,16 @@
 /*                            FUNCTIONS                              */
 /******************************************************************************/
 /**
- * \brief Creates a new connection node with the given sensor connection and data.
+ * \brief Creates a new node for the connection list.
  *
- * \param connection The sensor connection information.
- * \param data The initial sensor data associated with the connection.
+ * Allocates memory for a new ConnectionNode, initializes its fields with the provided
+ * sensor connection and sensor data, and sets the next pointer to NULL.
+ * If memory allocation fails, returns NULL.
  *
- * \return ConnectionNode* Pointer to the newly allocated node, or NULL on failure.
+ * \param connection The SensorConnection structure containing the details of the sensor connection.
+ * \param data The SensorData structure containing the latest data for the sensor connection.
+ *
+ * \return ConnectionNode* Pointer to the newly created node, or NULL if memory allocation fails.
  */
 static ConnectionNode *create_node(SensorConnection connection, SensorData data)
 {
@@ -23,6 +27,7 @@ static ConnectionNode *create_node(SensorConnection connection, SensorData data)
     node->next = NULL;
     return node;
 }
+
 /**
  * \brief Adds a new sensor connection to the linked list of active connections.
  *
@@ -36,16 +41,20 @@ static ConnectionNode *create_node(SensorConnection connection, SensorData data)
  */
 static void add_connection(ConnectionNode **head, SensorConnection connection, SensorData data)
 {
-    // Kiểm tra giới hạn IP trước khi thêm kết nối
+    // check IP limiter before connection
     if (!ip_limiter_allow_connection(connection.ip_address))
     {
-        printf("🚫 Kết nối từ IP %s bị từ chối (vượt quá giới hạn).\n", connection.ip_address);
+        printf("🚫 connection from IP %s rejeccted (over limit).\n", connection.ip_address);
         return;
     }
 
+    // add new node connection
     ConnectionNode *new_node = create_node(connection, data);
     if (!new_node)
+    {
+        handle_error("Failed add new connection");
         return;
+    }
 
     pthread_mutex_lock(&system_manager.connection_manager.mutex);
 
@@ -58,7 +67,8 @@ static void add_connection(ConnectionNode **head, SensorConnection connection, S
 /**
  * \brief Removes a sensor connection from the list by sensor ID.
  *
- * Releases associated resources including socket and memory, and updates the active connection count.
+ * Releases associated resources including socket and memory,
+ * and updates the active connection count.
  *
  * \param head Double pointer to the head of the connection list.
  * \param sensor_id The ID of the sensor to remove.
@@ -84,7 +94,15 @@ static void remove_connection(ConnectionNode **head, int sensor_id)
 
             // close socket
             if (current->connection.socket_fd >= 0)
+            {
+                if (current->connection.secure_comm)
+                {
+                    destroy_secure_connection(current->connection.secure_comm);
+                    current->connection.secure_comm = NULL;
+                }
                 close(current->connection.socket_fd); // user add
+            }
+
             free(current);
             system_manager.connection_manager.active_count--;
             break;
@@ -106,18 +124,18 @@ static void remove_connection(ConnectionNode **head, int sensor_id)
  */
 static ConnectionNode *find_connection(ConnectionNode *head, int sensor_id)
 {
-    pthread_mutex_lock(&system_manager.connection_manager.mutex);
+    // pthread_mutex_lock(&system_manager.connection_manager.mutex);
     while (head)
     {
         if (head->connection.sensor_id == sensor_id)
         {
-            pthread_mutex_unlock(&system_manager.connection_manager.mutex);
+            // pthread_mutex_unlock(&system_manager.connection_manager.mutex);
             return head;
         }
 
         head = head->next;
     }
-    pthread_mutex_unlock(&system_manager.connection_manager.mutex);
+    // pthread_mutex_unlock(&system_manager.connection_manager.mutex);
     return NULL;
 }
 /**
@@ -142,6 +160,85 @@ static void update_data_connection(ConnectionNode *head, int sensor_id, SensorDa
 
     pthread_mutex_unlock(&system_manager.connection_manager.mutex);
 }
+
+/*---------------Function print data connection-----------------------------------------*/
+/**
+ * \brief Converts a connection status enum value to a human-readable string.
+ *
+ * Maps the connection status code to its corresponding string representation,
+ * such as "CONNECTED", "DISCONNECTED", "TIMEOUT", or "UNKNOWN" for invalid values.
+ *
+ * \param status ConnectionStatus enum value representing the connection's status.
+ *
+ * \return const char* Pointer to the string representing the connection status.
+ */
+static const char *connection_status_to_string(ConnectionStatus status)
+{
+    switch (status)
+    {
+    case CONN_STATUS_CONNECTED:
+        return "CONNECTED";
+    case CONN_STATUS_DISCONNECTED:
+        return "DISCONNECTED";
+    case CONN_STATUS_TIMEOUT:
+        return "TIMEOUT";
+    default:
+        return "UNKNOWN";
+    }
+}
+/**
+ * \brief Formats a raw time value into a human-readable timestamp string.
+ *
+ * Converts the given time_t value to a string in the "YYYY-MM-DD HH:MM:SS" format.
+ * If the conversion fails, outputs "N/A" instead.
+ *
+ * \param raw_time The raw time value to be formatted.
+ * \param buffer Pointer to the character buffer where the formatted string will be stored.
+ * \param buffer_size Size of the buffer to prevent overflow.
+ *
+ * \return void
+ */
+static void format_time(time_t raw_time, char *buffer, size_t buffer_size)
+{
+    struct tm *time_info = localtime(&raw_time);
+    if (time_info != NULL)
+    {
+        strftime(buffer, buffer_size, "%Y-%m-%d %H:%M:%S", time_info);
+    }
+    else
+    {
+        snprintf(buffer, buffer_size, "N/A");
+    }
+}
+/**
+ * \brief Prints the information of a single sensor connection in a formatted table row.
+ *
+ * Formats the connection status and timestamps before displaying the sensor ID, IP address,
+ * port, status, connected time, and last active time.
+ *
+ * \param conn Pointer to the SensorConnection structure containing connection details.
+ *
+ * \return void
+ */
+static void print_connection_info(const SensorConnection *conn)
+{
+    char connected_time_str[20];
+    char last_active_time_str[20];
+
+    format_time(conn->connected_time, connected_time_str, sizeof(connected_time_str));
+    format_time(conn->last_active_time, last_active_time_str, sizeof(last_active_time_str));
+
+    const char *status_str = connection_status_to_string(conn->status);
+
+    printf("| %4d | %17s | %5d | %10s | %19s | %19s |\n",
+           conn->sensor_id,
+           conn->ip_address,
+           conn->port,
+           status_str,
+           connected_time_str,
+           last_active_time_str);
+}
+
 /**
  * \brief Displays all currently active sensor connections in a formatted table.
  *
@@ -152,7 +249,7 @@ static void update_data_connection(ConnectionNode *head, int sensor_id, SensorDa
  *
  * \return void
  */
-static void display_active_connections(ConnectionNode *head)
+void display_active_connections(ConnectionNode *head)
 {
     pthread_mutex_lock(&system_manager.connection_manager.mutex);
 
@@ -161,53 +258,17 @@ static void display_active_connections(ConnectionNode *head)
     printf("|  ID  |      IP Address   | Port  |   Status   |    Connected Time   |   Last Active Time  |\n");
     printf("+------+-------------------+-------+------------+---------------------+---------------------+\n");
 
-    // time_t now = time(NULL);
     ConnectionNode *current = head;
-
     while (current != NULL)
     {
-        SensorConnection conn = current->connection;
-
-        // change time
-        char connected_time_str[20];
-        char last_active_str[20];
-        strftime(connected_time_str, sizeof(connected_time_str), "%Y-%m-%d %H:%M:%S", localtime(&conn.connected_time));
-        strftime(last_active_str, sizeof(last_active_str), "%Y-%m-%d %H:%M:%S", localtime(&conn.last_active_time));
-
-        // change status to string
-        const char *status_str;
-        switch (conn.status)
-        {
-        case CONN_STATUS_CONNECTED:
-            status_str = "CONNECTED";
-            break;
-        case CONN_STATUS_DISCONNECTED:
-            status_str = "DISCONNECTED";
-            break;
-        case CONN_STATUS_TIMEOUT:
-            status_str = "TIMEOUT";
-            break;
-        default:
-            status_str = "UNKNOWN";
-            break;
-        }
-
-        // display connection info
-        printf("| %4d | %17s | %5d | %10s | %19s | %19s |\n",
-               conn.sensor_id,
-               conn.ip_address,
-               conn.port,
-               status_str,
-               connected_time_str,
-               last_active_str);
-
+        print_connection_info(&current->connection);
         current = current->next;
     }
 
     printf("+------+-------------------+-------+------------+---------------------+---------------------+\n");
     pthread_mutex_unlock(&system_manager.connection_manager.mutex);
 }
-
+/*-----------------------------------------------------------------------------------------*/
 /**
  * \brief Displays basic resource usage statistics such as RAM and CPU cores.
  *
@@ -256,7 +317,6 @@ void display_system_status()
     total_messages_db = system_manager.storage_manager.total_messages_received;
     pthread_mutex_unlock(&system_manager.storage_manager.mutex);
 
-    // In ra
     printf("\n[System Status]\n");
     printf("Active connections       : %d\n", active_connections);
     printf(" Total messages received : %d (live buffer: %d)\n", total_messages_db, total_messages_conn);
@@ -264,11 +324,14 @@ void display_system_status()
 }
 /**
 
-\brief Initializes the connection manager by setting initial values for connection list, active count, running port, and mutex.
+\brief Initializes the connection manager by setting initial values for connection list,
+active count, running port, and mutex.
 
-This function initializes the connection manager with default values, including setting the head of the connection list to NULL,
+This function initializes the connection manager with default values,
+including setting the head of the connection list to NULL,
 
-active connection count to 0, and running port to 0. Additionally, it initializes a mutex for thread safety and binds the connection
+active connection count to 0, and running port to 0. Additionally,
+it initializes a mutex for thread safety and binds the connection
 
 management methods (add, remove, find, update, display) to the respective functions.
 
@@ -299,21 +362,37 @@ internal states (head, active count, running port). The mutex is unlocked and de
 void cleanup_connection_manager()
 {
     pthread_mutex_lock(&system_manager.connection_manager.mutex);
+
     ConnectionNode *current = system_manager.connection_manager.head;
     while (current != NULL)
     {
         ConnectionNode *tmp = current;
         current = current->next;
+
+        // release secure_comm
+        if (tmp->connection.secure_comm != NULL)
+        {
+            // destroy
+            destroy_secure_connection(tmp->connection.secure_comm);
+            tmp->connection.secure_comm = NULL;
+        }
+
+        // close socket
+        if (tmp->connection.socket_fd >= 0)
+        {
+            close(tmp->connection.socket_fd);
+        }
+
         free(tmp);
     }
 
     system_manager.connection_manager.head = NULL;
     system_manager.connection_manager.active_count = 0;
     system_manager.connection_manager.running_port = 0;
+
     pthread_mutex_unlock(&system_manager.connection_manager.mutex);
     pthread_mutex_destroy(&system_manager.connection_manager.mutex);
 }
-
 /*------------------------handle new connection-----------------*/
 /**
 
@@ -324,7 +403,8 @@ void cleanup_connection_manager()
 \param sensor_id The unique sensor ID for the connection.
 
 \return A new SensorConnection initialized with provided data. */
-static SensorConnection create_sensor_connection(ClientInfoPacket *packet, int sensor_id)
+// static SensorConnection create_sensor_connection(ClientInfoPacket *packet, int sensor_id)
+static SensorConnection create_sensor_connection(ClientInfoPacket *packet, int sensor_id, SecureCommunication *secure_comm)
 {
     SensorConnection conn = {
         .socket_fd = packet->sock_fd,
@@ -334,7 +414,7 @@ static SensorConnection create_sensor_connection(ClientInfoPacket *packet, int s
         .status = CONN_STATUS_CONNECTED,
         .connected_time = time(NULL),
         .last_active_time = time(NULL),
-        // .secure_communiation = secure_comm,
+        .secure_comm = secure_comm,
     };
     strncpy(conn.ip_address, packet->ip_address, INET_ADDRSTRLEN);
     return conn;
@@ -367,7 +447,6 @@ static SensorData create_initial_sensor_data(int sensor_id)
 \return void */
 static void update_sensor_temperature(int sensor_id, float temperature)
 {
-
     time_t current_time = time(NULL);
 
     SensorData new_data = {
@@ -376,7 +455,7 @@ static void update_sensor_temperature(int sensor_id, float temperature)
         .temperature = temperature,
         .is_valid = true};
 
-    // update to connaction manager
+    // update to connection manager
     ConnectionNode *node = system_manager.connection_manager.find(
         system_manager.connection_manager.head, sensor_id);
     if (node)
@@ -388,6 +467,33 @@ static void update_sensor_temperature(int sensor_id, float temperature)
     // store data
     storage_add_data(new_data);
 }
+/**
+ * \brief Receives all data from a secure communication channel.
+ *
+ * This function repeatedly calls the `recv` method of the communication interface
+ * until the requested number of bytes are received or an error occurs.
+ *
+ * \param comm The secure communication interface.
+ * \param buffer The buffer to store the received data.
+ * \param size The number of bytes to receive.
+ *
+ * \return 0 on success, -1 if an error occurs or the connection is closed.
+ */
+static int recv_all(SecureCommunication *comm, void *buffer, size_t size)
+{
+    size_t total_received = 0;
+    while (total_received < size)
+    {
+        int bytes_received = comm->interface.recv(comm->impl, (char *)buffer + total_received, size - total_received);
+        if (bytes_received <= 0)
+        {
+            return -1; // Error or connection closed
+        }
+        total_received += bytes_received;
+    }
+    return 0; // OK
+}
+
 /**
 
 \brief Handles a new client connection, validates and adds it to the connection manager.
@@ -410,51 +516,41 @@ void handle_new_connection(int epoll_fd, int server_fd)
         return;
     }
 
-    printf("client fd by accept client: %d\n", client_fd);
-
-    // for security
-    // SecureCommunication *secure_comm = create_secure_connection(client_fd, SECURE_SSL_SERVER);
-    // if (secure_comm == NULL)
-    // {
-    //     close(client_fd);
-    //     return;
-    // }
+    SecureCommunication *comm = create_secure_connection(client_fd, SECURE_SSL_SERVER);
+    if (!comm)
+    {
+        handle_error("Fail accept client with security");
+        close(client_fd);
+        return;
+    }
 
     ClientInfoPacket packet;
-
-    if (!read_client_info(client_fd, &packet))
+    if (recv_all(comm, &packet, sizeof(packet)) < 0)
+    {
+        handle_error("Failed to read client info securely");
+        destroy_secure_connection(comm);
+        close(client_fd);
         return;
-    printf("client fd by receive client packet: %d", packet.sock_fd);
-
-    // read packet client info by SLL security
-    // if (secure_comm->interface.recv(secure_comm->impl, (char *)&packet, sizeof(packet)) <= 0)
-    // {
-    //     handle_error("Failed to read client info securely");
-    //     destroy_secure_connection(secure_comm);
-    //     close(client_fd);
-    //     return;
-    // }
+    }
 
     inet_ntop(AF_INET, &(client_addr.sin_addr), client_ip, INET_ADDRSTRLEN);
     warn_if_ip_mismatch(client_ip, packet.ip_address);
 
-    if (is_port_already_connected((packet.port)))
+    if (is_port_already_connected(packet.port))
     {
         handle_error("Port already connected");
-        // destroy_secure_connection(secure_comm);
+        destroy_secure_connection(comm);
         close(client_fd);
         return;
     }
 
     int sensor_id = system_manager.connection_manager.active_count;
-
-    // SensorConnection conn = create_sensor_connection(&packet, sensor_id, secure_comm);
-    SensorConnection conn = create_sensor_connection(&packet, sensor_id);
+    SensorConnection conn = create_sensor_connection(&packet, sensor_id, comm);
     SensorData init_data = create_initial_sensor_data(sensor_id);
 
     system_manager.connection_manager.add(&system_manager.connection_manager.head, conn, init_data);
 
-    // write to log
+    // Log new connection
     char msg[256];
     snprintf(msg, sizeof(msg), "A sensor node with %d has opened a new connection", sensor_id);
     system_manager.log_manager.log(&system_manager.log_manager, LOG_INFO, "Connection", msg);
@@ -462,11 +558,9 @@ void handle_new_connection(int epoll_fd, int server_fd)
     if (!add_client_fd_to_epoll(epoll_fd, client_fd))
     {
         system_manager.connection_manager.remove(&system_manager.connection_manager.head, sensor_id);
-
-        char msg[256];
         snprintf(msg, sizeof(msg), "A sensor node with %d has closed the connection", sensor_id);
         system_manager.log_manager.log(&system_manager.log_manager, LOG_INFO, "Connection", msg);
-        // destroy_secure_connection(secure_comm);
+        destroy_secure_connection(comm);
         close(client_fd);
         return;
     }
@@ -483,7 +577,7 @@ void handle_new_connection(int epoll_fd, int server_fd)
 \param arg Pointer to any argument (not used in this case).
 
 \return NULL */
-void *sensor_data_update_thread(void *arg)
+void *update_sensor_data_thread(void *arg)
 {
     while (1)
     {
@@ -530,7 +624,7 @@ static bool is_connection_timed_out(SensorConnection *conn, time_t now)
 The corresponding socket is closed, and resources are freed.
 
 \return void */
-void check_and_cleanup_inactive_connections()
+static void check_and_cleanup_inactive_connections()
 {
     time_t now = time(NULL);
     ConnectionManager *manager = &system_manager.connection_manager;
@@ -546,7 +640,7 @@ void check_and_cleanup_inactive_connections()
 
         if (is_connection_timed_out(&current->connection, now))
         {
-            // Gỡ bỏ kết nối
+            // terminate connection
             int sensor_id = current->connection.sensor_id;
             printf("[TIMEOUT] Sensor ID %d disconnected due to inactivity.\n", sensor_id);
             close(current->connection.socket_fd);
@@ -592,7 +686,80 @@ void *check_timeout_connection_thread(void *arg)
     }
     return NULL;
 }
+/**
+ * \brief Sets the currently running port in the connection manager.
+ *
+ * This function updates the `running_port` value in a thread-safe manner
+ * using a mutex lock.
+ *
+ * \param port The port number to set as running.
+ *
+ * \return void
+ */
+static void set_running_port(int port)
+{
+    pthread_mutex_lock(&system_manager.connection_manager.mutex);
+    system_manager.connection_manager.running_port = port;
+    pthread_mutex_unlock(&system_manager.connection_manager.mutex);
+}
+/**
+ * \brief Finds a connection node by its socket file descriptor.
+ *
+ * This function traverses the linked list of connections in a thread-safe
+ * way to locate the connection associated with the given file descriptor.
+ *
+ * \param client_fd The socket file descriptor to search for.
+ *
+ * \return A pointer to the found ConnectionNode, or NULL if not found.
+ */
+static ConnectionNode *find_connection_by_fd(int client_fd)
+{
+    pthread_mutex_lock(&system_manager.connection_manager.mutex);
+    ConnectionNode *curr = system_manager.connection_manager.head;
+    while (curr && curr->connection.socket_fd != client_fd)
+        curr = curr->next;
+    pthread_mutex_unlock(&system_manager.connection_manager.mutex);
+    return curr;
+}
+/**
+ * \brief Finds a connection node by its socket file descriptor.
+ *
+ * This function traverses the linked list of connections in a thread-safe
+ * way to locate the connection associated with the given file descriptor.
+ *
+ * \param client_fd The socket file descriptor to search for.
+ *
+ * \return A pointer to the found ConnectionNode, or NULL if not found.
+ */
+static void handle_existing_connection(int epoll_fd, int client_fd)
+{
+    ConnectionNode *conn = find_connection_by_fd(client_fd);
+    if (!conn)
+        return;
 
+    char buffer[1];
+    int result = recv(client_fd, buffer, sizeof(buffer), MSG_PEEK);
+
+    if (result == 0)
+    {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Sensor %d disconnected", conn->connection.sensor_id);
+        system_manager.log_manager.log(&system_manager.log_manager, LOG_INFO, "Connection", msg);
+
+        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, NULL);
+        system_manager.connection_manager.remove(&system_manager.connection_manager.head, conn->connection.sensor_id);
+    }
+    else if (result < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+    {
+        perror("recv");
+        char msg[256];
+        snprintf(msg, sizeof(msg), "Sensor %d error disconnect: %s", conn->connection.sensor_id, strerror(errno));
+        system_manager.log_manager.log(&system_manager.log_manager, LOG_ERROR, "Connection", msg);
+
+        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, NULL);
+        system_manager.connection_manager.remove(&system_manager.connection_manager.head, conn->connection.sensor_id);
+    }
+}
 /**
 
 \brief Manages the connection setup and handling for the server.
@@ -602,17 +769,15 @@ void *check_timeout_connection_thread(void *arg)
 \param arg Pointer to the port number on which to bind the server.
 
 \return NULL */
-
 void *connection_manager(void *arg)
 {
     int port = *(int *)arg;
 
     int server_fd = create_and_bind_socket(port);
+    if (server_fd < 0)
+        return NULL;
 
-    // save port running
-    pthread_mutex_lock(&system_manager.connection_manager.mutex);
-    system_manager.connection_manager.running_port = port;
-    pthread_mutex_unlock(&system_manager.connection_manager.mutex);
+    set_running_port(port);
 
     if (listen(server_fd, 10) < 0)
     {
@@ -620,30 +785,40 @@ void *connection_manager(void *arg)
         exit(EXIT_FAILURE);
     }
 
-    // create epoll
     int epoll_fd = setup_epoll(server_fd);
+    if (epoll_fd == -1)
+    {
+        close(server_fd);
+        return NULL;
+    }
+
     struct epoll_event events[10];
-    while (1)
+    while (!stop_requested)
     {
         int nfds = epoll_wait(epoll_fd, events, 10, -1);
         if (nfds == -1)
         {
+            if (errno == EINTR)
+                continue;
             perror("epoll_wait");
-            exit(EXIT_FAILURE);
+            break;
         }
 
-        for (int n = 0; n < nfds; ++n)
+        for (int i = 0; i < nfds; ++i)
         {
-            if (events[n].data.fd == server_fd)
+            int fd = events[i].data.fd;
+            if (fd == server_fd)
             {
-                // handle new connection
                 handle_new_connection(epoll_fd, server_fd);
             }
-            else // handle data from new connection
+            else
             {
+                handle_existing_connection(epoll_fd, fd);
             }
         }
     }
+
+    close(epoll_fd);
     close(server_fd);
     return NULL;
 }

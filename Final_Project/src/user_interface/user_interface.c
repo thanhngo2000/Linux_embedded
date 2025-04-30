@@ -1,6 +1,11 @@
+/******************************************************************************/
+/*                              INCLUDE FILES                                 */
+/******************************************************************************/
 #include "user_interface.h"
 
-/*------------------variable------------------*/
+/******************************************************************************/
+/*                              PRIVATE DATA                                  */
+/******************************************************************************/
 typedef struct
 {
     Command base;
@@ -31,13 +36,24 @@ typedef struct
 {
     Command base;
 } ReaddbCommand;
-/*----------------------------------------------*/
-
-/*Function prototype*/
+/******************************************************************************/
+/*                            FUNCTIONS PROTOTYPES                             */
+/******************************************************************************/
 Command *create_command_handler(const char *command_input);
 
-/*------------------------------------------------*/
-
+/******************************************************************************/
+/*                            FUNCTIONS                              */
+/******************************************************************************/
+/**
+ * \brief Splits an input string into words based on spaces.
+ *
+ * \param input The string to be split.
+ * \param words A 2D array where the split words will be stored.
+ * \param word_count A pointer to an integer where the number of words will be stored.
+ *
+ * \note This function uses `strtok` to tokenize the input string. The words are stored in the provided 2D array
+ *       and the word count is updated.
+ */
 static void split_string(const char *input, char words[MAX_WORDS][MAX_WORD_LENGTH], int *word_count)
 {
     char *token;
@@ -60,7 +76,14 @@ static void split_string(const char *input, char words[MAX_WORDS][MAX_WORD_LENGT
     free(input_copy);
 }
 
-/*--------------------------------------------------*/
+/**
+ * \brief Handles the execution of a command by creating and executing the corresponding command handler.
+ *
+ * \param command_input The input string representing the command to be handled.
+ *
+ * \note This function creates a command handler based on the input and then executes the command.
+ *       If the command is unknown, an error message is printed.
+ */
 void handle_command(const char *command_input)
 {
     Command *command = create_command_handler(command_input);
@@ -74,6 +97,14 @@ void handle_command(const char *command_input)
     free(command);
 }
 /*----------------command connect handler-------------------------------*/
+/**
+ * \brief Executes the connect command by parsing the connection parameters and establishing a connection.
+ *
+ * \param self The command object.
+ * \param command_args The arguments for the connect command, containing the IP and port.
+ *
+ * \note This function parses the command arguments, validates the connection parameters, and establishes a client connection.
+ */
 static void execute_connect_command(Command *self, const char *command_args)
 {
     printf("Processing connect command\n");
@@ -100,6 +131,13 @@ static void execute_connect_command(Command *self, const char *command_args)
     // run client thread connect to server
     start_client_connection(ip_connect, port_connect);
 }
+/**
+ * \brief Creates a connect command and sets its execution function.
+ *
+ * \return A new connect command object.
+ *
+ * \note This function allocates memory for a new connect command and sets up its execution function.
+ */
 Command *create_connect_command(void)
 {
     ConnectCommand *command = malloc(sizeof(ConnectCommand));
@@ -114,12 +152,26 @@ Command *create_connect_command(void)
 /*------------------------------------------------------------*/
 
 /*----------------command log handler-------------------------------*/
+/**
+ * \brief Executes the log command by reading and displaying the log file contents.
+ *
+ * \param self The command object.
+ * \param command_args The arguments for the log command (unused).
+ *
+ * \note This function reads the log file and displays its contents.
+ */
 static void execute_log_command(Command *self, const char *command_args)
 {
     printf("Read log \n");
     read_log_file(LOG_FILE_NAME);
 }
-
+/**
+ * \brief Creates a log command and sets its execution function.
+ *
+ * \return A new log command object.
+ *
+ * \note This function allocates memory for a new log command and sets up its execution function.
+ */
 Command *create_log_command(void)
 {
     LogCommand *command = malloc(sizeof(LogCommand));
@@ -134,6 +186,14 @@ Command *create_log_command(void)
 /*-------------------------------------------------------------*/
 
 /*----------------command clearlog handler-------------------------------*/
+/**
+ * \brief Executes the clear log command by clearing the log file contents.
+ *
+ * \param self The command object.
+ * \param command_args The arguments for the clear log command (unused).
+ *
+ * \note This function clears the log file contents.
+ */
 static void execute_clear_log_command(Command *self, const char *command_args)
 {
 
@@ -146,7 +206,13 @@ static void execute_clear_log_command(Command *self, const char *command_args)
         perror("Failed clear log \n");
     }
 }
-
+/**
+ * \brief Creates a clear log command and sets its execution function.
+ *
+ * \return A new clear log command object.
+ *
+ * \note This function allocates memory for a new clear log command and sets up its execution function.
+ */
 Command *create_clear_log_command(void)
 {
     ClearLogCommand *command = malloc(sizeof(ClearLogCommand));
@@ -161,6 +227,14 @@ Command *create_clear_log_command(void)
 /*-------------------------------------------------------------*/
 
 /*----------------command terminate handler-------------------------------*/
+/**
+ * \brief Executes the terminate command by terminating the server and removing a specific sensor connection.
+ *
+ * \param self The command object.
+ * \param command_args The arguments for the terminate command, containing the sensor ID.
+ *
+ * \note This function removes the sensor connection with the specified sensor ID and logs the termination.
+ */
 static void execute_terminate_command(Command *self, const char *command_args)
 {
     printf("Terminating server \n");
@@ -176,7 +250,13 @@ static void execute_terminate_command(Command *self, const char *command_args)
     snprintf(msg, sizeof(msg), "A sensor node with %d has closed the connection", sensorID_terminate);
     system_manager.log_manager.log(&system_manager.log_manager, LOG_INFO, "Connection", msg);
 }
-
+/**
+ * \brief Creates a terminate command and sets its execution function.
+ *
+ * \return A new terminate command object.
+ *
+ * \note This function allocates memory for a new terminate command and sets up its execution function.
+ */
 Command *create_terminate_command(void)
 {
     TerminateCommand *command = malloc(sizeof(TerminateCommand));
@@ -191,12 +271,26 @@ Command *create_terminate_command(void)
 /*-------------------------------------------------------------*/
 
 /*----------------command status handler-------------------------------*/
+/**
+ * \brief Executes the status command by displaying the current system status.
+ *
+ * \param self The command object.
+ * \param command_args The arguments for the status command (unused).
+ *
+ * \note This function displays the current status of the system.
+ */
 static void execute_status_command(Command *self, const char *command_args)
 {
     printf("Review status info \n");
     display_system_status();
 }
-
+/**
+ * \brief Creates a status command and sets its execution function.
+ *
+ * \return A new status command object.
+ *
+ * \note This function allocates memory for a new status command and sets up its execution function.
+ */
 Command *create_status_command(void)
 {
     StatusCommand *command = malloc(sizeof(StatusCommand));
@@ -211,12 +305,26 @@ Command *create_status_command(void)
 /*-------------------------------------------------------------*/
 
 /*----------------command stas handler-------------------------------*/
+/**
+ * \brief Executes the stats command by displaying the connection statistics.
+ *
+ * \param self The command object.
+ * \param command_args The arguments for the stats command (unused).
+ *
+ * \note This function displays the connection statistics.
+ */
 static void execute_stats_command(Command *self, const char *command_args)
 {
     printf("Review stats connection \n");
     system_manager.connection_manager.display(system_manager.connection_manager.head);
 }
-
+/**
+ * \brief Creates a stats command and sets its execution function.
+ *
+ * \return A new stats command object.
+ *
+ * \note This function allocates memory for a new stats command and sets up its execution function.
+ */
 Command *create_stats_command(void)
 {
     StatsCommand *command = malloc(sizeof(StatsCommand));
@@ -231,12 +339,26 @@ Command *create_stats_command(void)
 /*-------------------------------------------------------------*/
 
 /*----------------command readdb handler-------------------------------*/
+/**
+ * \brief Executes the readdb command by reading and displaying all data from the database.
+ *
+ * \param self The command object.
+ * \param command_args The arguments for the readdb command (unused).
+ *
+ * \note This function reads all data from the database and displays it.
+ */
 static void execute_readdb_command(Command *self, const char *command_args)
 {
     printf("Read database \n");
     storage_print_all_data();
 }
-
+/**
+ * \brief Creates a readdb command and sets its execution function.
+ *
+ * \return A new readdb command object.
+ *
+ * \note This function allocates memory for a new readdb command and sets up its execution function.
+ */
 Command *create_readdb_command(void)
 {
     ReaddbCommand *command = malloc(sizeof(ReaddbCommand));
@@ -254,7 +376,13 @@ Command *create_readdb_command(void)
 /*-------------------------------------------------------------*/
 
 /*-------------------Handle command error------------------------------*/
-
+/**
+ * \brief Converts a string to lowercase.
+ *
+ * \param str The string to be converted.
+ *
+ * \note This function iterates through the string and converts each character to lowercase.
+ */
 static void to_lower_case(char *str)
 {
     for (int i = 0; str[i]; i++)
@@ -276,6 +404,15 @@ static const CommandSpec valid_commands[] = {
 #define NUM_COMMANDS (sizeof(valid_commands) / sizeof(valid_commands[0]))
 /*-----------------------------------*/
 /*------------Validate connection parram---------------------*/
+/**
+ * \brief Creates a command handler based on the input command string.
+ *
+ * \param command_input The input string representing the command to be handled.
+ *
+ * \return A pointer to the created command object or NULL if the command is invalid.
+ *
+ * \note This function splits the input string, validates the command, and returns the corresponding command handler.
+ */
 Command *create_command_handler(const char *command_input)
 {
     char words[MAX_WORDS][MAX_WORD_LENGTH];

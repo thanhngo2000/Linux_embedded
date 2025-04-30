@@ -1,5 +1,19 @@
+/******************************************************************************/
+/*                              INCLUDE FILES                                 */
+/******************************************************************************/
 #include "storage.h"
-
+/******************************************************************************/
+/*                            FUNCTIONS                              */
+/******************************************************************************/
+/**
+ * \brief Initializes the sensor data table in the SQL database if it does not exist.
+ *
+ * \param db The SQLite database handle.
+ *
+ * \return Returns true if the table is created successfully or already exists, false otherwise.
+ *
+ * \note This function creates a table named `sensor_data` with columns `id`, `timestamp`, `sensor_id`, and `temperature`.
+ */
 static bool initialize_sql_table(sqlite3 *db)
 {
     const char *create_table_sql = "CREATE TABLE IF NOT EXISTS sensor_data "
@@ -7,6 +21,14 @@ static bool initialize_sql_table(sqlite3 *db)
                                    "sensor_id INTEGER, temperature REAL)";
     return sqlite3_exec(db, create_table_sql, NULL, NULL, NULL) == SQLITE_OK;
 }
+/**
+ * \brief Handles a successful SQL connection by updating the connection status and logging the event.
+ *
+ * \param sql The SQL connection information structure.
+ *
+ * \note This function updates the connection status to "connected" and resets the retry count.
+ *       It logs the connection success message.
+ */
 static void handle_sql_connection_success(SQLConnectionInfo *sql)
 {
     strcpy(sql->status, SQL_CONNECTED);
@@ -15,6 +37,16 @@ static void handle_sql_connection_success(SQLConnectionInfo *sql)
                                    LOG_INFO, "Storage",
                                    "Connected to SQL database");
 }
+/**
+ * \brief Handles a failed SQL connection by updating the connection status and retrying if the limit is not reached.
+ *
+ * \param sql The SQL connection information structure.
+ *
+ * \return Returns true if the retry limit is not reached and the connection should be retried, false otherwise.
+ *
+ * \note This function increments the retry count and logs an error message if the maximum retry limit is reached.
+ *       It sleeps for a delay before retrying.
+ */
 static bool handle_sql_connection_failure(SQLConnectionInfo *sql)
 {
     strcpy(sql->status, SQL_DISCONNECTED);
@@ -31,6 +63,14 @@ static bool handle_sql_connection_failure(SQLConnectionInfo *sql)
     sleep(SQL_RETRY_DELAY_SEC);
     return false;
 }
+/**
+ * \brief Attempts to connect to the SQL database with retry logic.
+ *
+ * \return Returns true if the connection is successful, false if retries are exhausted.
+ *
+ * \note This function tries to open the database connection, creates the table, and handles any connection failures
+ *       by retrying the connection process.
+ */
 static bool storage_connect_with_retry()
 {
     SQLConnectionInfo *sql = &system_manager.storage_manager.sql_info;
@@ -46,7 +86,15 @@ static bool storage_connect_with_retry()
     }
     return handle_sql_connection_failure(sql);
 }
-
+/**
+ * \brief Creates a new connection node to hold sensor data.
+ *
+ * \param data The sensor data to be stored in the new node.
+ *
+ * \return Returns a pointer to the newly created connection node, or NULL if memory allocation fails.
+ *
+ * \note This function allocates memory for a new connection node and stores the provided sensor data.
+ */
 static ConnectionNode *create_data_node(SensorData data)
 {
     ConnectionNode *new_node = malloc(sizeof(ConnectionNode));
@@ -57,6 +105,13 @@ static ConnectionNode *create_data_node(SensorData data)
     new_node->next = NULL;
     return new_node;
 }
+/**
+ * \brief Appends a new connection node to the pending data list.
+ *
+ * \param new_node The new connection node to be appended.
+ *
+ * \note This function traverses the pending data list and appends the new node at the end.
+ */
 static void append_to_pending_data(ConnectionNode *new_node)
 {
     if (system_manager.storage_manager.pending_data_head == NULL)
@@ -71,6 +126,14 @@ static void append_to_pending_data(ConnectionNode *new_node)
         current->next = new_node;
     }
 }
+/**
+ * \brief Adds sensor data to the pending data list.
+ *
+ * \param data The sensor data to be added.
+ *
+ * \note This function locks the mutex, creates a new data node, and appends it to the pending data list.
+ *       If memory allocation fails, it logs an error message.
+ */
 void storage_add_data(SensorData data)
 {
     pthread_mutex_lock(&system_manager.storage_manager.mutex);
@@ -89,6 +152,12 @@ void storage_add_data(SensorData data)
 
     pthread_mutex_unlock(&system_manager.storage_manager.mutex);
 }
+/**
+ * \brief Initializes the storage manager, including setting initial values for SQL connection information and mutex.
+ *
+ * \note This function initializes the mutex and sets up the initial state of the SQL connection info, including
+ *       the connection status and retry count.
+ */
 void init_storage_manager()
 {
     pthread_mutex_init(&system_manager.storage_manager.mutex, NULL);
@@ -99,6 +168,11 @@ void init_storage_manager()
     system_manager.storage_manager.pending_data_head = NULL;
     system_manager.storage_manager.total_messages_received = 0;
 }
+/**
+ * \brief Cleans up resources used by the storage manager, including closing SQL connection and freeing memory.
+ *
+ * \note This function closes the database connection if open, frees all pending data nodes, and destroys the mutex.
+ */
 void cleanup_storage_manager()
 {
     // 1. close SQL if open
@@ -128,10 +202,17 @@ void cleanup_storage_manager()
 
     // destroy mutex
     pthread_mutex_destroy(&system_manager.storage_manager.mutex);
-
-    printf("Storage manager cleanup completed.\n");
 }
-// handle pending data
+/**
+ * \brief Prepares an SQL statement for inserting sensor data into the database.
+ *
+ * \param db The SQLite database handle.
+ * \param data The sensor data to be inserted.
+ *
+ * \return Returns the prepared statement for insertion, or NULL if preparation fails.
+ *
+ * \note This function binds the sensor data values to the prepared SQL statement for insertion.
+ */
 static sqlite3_stmt *prepare_insert_statement(sqlite3 *db, SensorData data)
 {
     const char *insert_sql = "INSERT INTO sensor_data (timestamp, sensor_id, temperature) "
@@ -147,6 +228,14 @@ static sqlite3_stmt *prepare_insert_statement(sqlite3 *db, SensorData data)
     }
     return NULL;
 }
+/**
+ * \brief Removes a processed connection node from the pending data list.
+ *
+ * \param to_remove The connection node to be removed.
+ * \param prev The previous node in the list.
+ *
+ * \note This function frees the memory used by the processed node and updates the pending data list.
+ */
 static void remove_processed_node(ConnectionNode *to_remove, ConnectionNode *prev)
 {
     if (prev)
@@ -160,6 +249,12 @@ static void remove_processed_node(ConnectionNode *to_remove, ConnectionNode *pre
     free(to_remove);
     system_manager.storage_manager.total_messages_received++;
 }
+/**
+ * \brief Processes all pending sensor data and inserts it into the database.
+ *
+ * \note This function iterates through the pending data list, prepares insert statements,
+ *       executes them, and removes processed nodes from the list. Errors are logged.
+ */
 static void process_pending_data()
 {
     pthread_mutex_lock(&system_manager.storage_manager.mutex);
@@ -199,7 +294,12 @@ static void process_pending_data()
 
     pthread_mutex_unlock(&system_manager.storage_manager.mutex);
 }
-
+/**
+ * \brief Prints all sensor data from the database to the console.
+ *
+ * \note This function retrieves all sensor data from the database, formats the timestamp into a human-readable format,
+ *       and prints the data in a table format. If the database is not connected, it logs a warning.
+ */
 void storage_print_all_data()
 {
     SQLConnectionInfo *sql = &system_manager.storage_manager.sql_info;
@@ -246,9 +346,17 @@ void storage_print_all_data()
     system_manager.log_manager.log(&system_manager.log_manager, LOG_INFO,
                                    "Storage", "All sensor data printed to console");
 }
+/**
+ * \brief Main storage manager thread that handles SQL connections and processes pending data.
+ *
+ * \param arg A pointer to any arguments (unused).
+ *
+ * \note This function runs in a loop, attempting to connect to the SQL database if disconnected,
+ *       and processing any pending data every second.
+ */
 void *storage_manager(void *arg)
 {
-    while (1)
+    while (!stop_requested)
     {
         // connect to SQL if not connect
         if (strcmp(system_manager.storage_manager.sql_info.status, SQL_DISCONNECTED) == 0)

@@ -1,9 +1,15 @@
 #ifndef SOCKET_H
 #define SOCKET_H
+/******************************************************************************/
+/*                              INCLUDE FILES                                 */
+/******************************************************************************/
 #include "../../include/shared_data.h"
 #include "../utils/utils.h"
 #include "../security/security.h"
 
+/******************************************************************************/
+/*                              PRIVATE DATA                                  */
+/******************************************************************************/
 typedef struct
 {
     char *ip_address;
@@ -18,10 +24,12 @@ typedef struct
     int port;
 } ClientInfoPacket;
 
-/*Function prototype*/
-
+/******************************************************************************/
+/*                            FUNCTIONS PROTOTYPES                             */
+/******************************************************************************/
 int setup_epoll(int server_fd);
 void handle_new_connection(int epoll_fd, int server_fd);
+int create_socket();
 int create_and_bind_socket(const int port);
 void *client_thread_main(void *arg);
 void start_client_connection(char *ip_address, const int port_connect);

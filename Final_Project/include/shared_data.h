@@ -1,5 +1,8 @@
 #ifndef SHARED_DATA_H
 #define SHARED_DATA_H
+/******************************************************************************/
+/*                              INCLUDE FILES                                 */
+/******************************************************************************/
 #include "stdio.h"
 #include "stdlib.h"
 #include "string.h"
@@ -21,17 +24,19 @@
 #include <sys/sysinfo.h>
 #include <signal.h>
 
-#define OPENSSL_API_COMPAT 0x10100000L
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-//
-// ----------------------------------- CONFIG CONSTANTS-------------------------------------------
 
+/******************************************************************************/
+/*                     EXPORTED TYPES and DEFINITIONS                         */
+/******************************************************************************/
 #define MAX_CONNECTIONS 100
 #define BUFFER_SIZE 256
 #define RING_BUFFER_SIZE 1024
 #define MAX_WORDS 10
 #define MAX_WORD_LENGTH 100
+
+#define OPENSSL_API_COMPAT 0x10100000L
 
 #define LOG_FIFO_NAME "logFifo"
 #define LOG_FILE_NAME "gateway.log"
@@ -47,15 +52,17 @@
 #define MAX_CONNECTIONS_PER_IP 5
 #define MAX_UNIQUE_IPS 256
 
+/******************************************************************************/
+/*                              EXPORTED DATA                                 */
+/******************************************************************************/
 // ─── SSL ENCRYPTION security ──────────────────────────────────────────────────────────────
 //
 typedef enum
 {
-    SECURE_PLAIN, // for don't use ssl
-    SECURE_SSL_SERVER,
-    SECURE_SSL_CLIENT
+    SECURE_PLAIN,
+    SECURE_SSL_CLIENT,
+    SECURE_SSL_SERVER
 } SecureMode;
-
 typedef struct
 {
     int (*send)(void *self, const char *data, size_t len);
@@ -63,11 +70,25 @@ typedef struct
     void (*close)(void *self);
 } SecureCommunicationInterface;
 
+// Abstract Connection class (Strategy Pattern)
 typedef struct
 {
     SecureCommunicationInterface interface;
-    void *impl; // SSL or plain TCP implementation
+    void *impl;
 } SecureCommunication;
+// SSL Connection
+typedef struct
+{
+    SSL *ssl;
+    SSL_CTX *ctx;
+    int fd;
+} SSLConnection;
+
+typedef struct
+{
+    int fd;
+} PlainConnection;
+
 // ─── DOMAIN MODEL ──────────────────────────────────────────────────────────────
 //
 typedef enum
@@ -103,7 +124,7 @@ typedef struct
 
     ConnectionStatus status;
 
-    SecureCommunication *secure_communiation;
+    SecureCommunication *secure_comm;
 } SensorConnection;
 
 //
@@ -124,7 +145,6 @@ typedef struct
     int running_port; // save port running
     pthread_mutex_t mutex;
 
-    // "Object-Oriented" style method pointers
     void (*add)(struct ConnectionNode **, SensorConnection, SensorData);
     void (*remove)(struct ConnectionNode **, int sensor_id);
     struct ConnectionNode *(*find)(struct ConnectionNode *, int sensor_id);
@@ -233,11 +253,12 @@ typedef struct
 
     IpLimiterManager ip_limiter_manager; // security
 
-    SSL_CTX *ssl_context;
+    // SSL_CTX *ssl_context;
+    SSL_CTX *ssl_server_context;
+    SSL_CTX *ssl_client_context;
 } SystemManager;
 
 extern SystemManager system_manager;
-
-// Function prototype
+extern volatile sig_atomic_t stop_requested;
 
 #endif
